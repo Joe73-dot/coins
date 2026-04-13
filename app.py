@@ -61,8 +61,8 @@ def index():
 @app.route("/prices")
 def get_prices():
     """
-    Fetch PEPE and BONK ticker data from Coins.ph.
-    Falls back to Binance public API if Coins.ph doesn't carry the pair.
+    Fetch PEPE and BONK ticker data.
+    Uses Binance public API (no key needed) — PEPE/BONK not listed on Coins.ph exchange.
     """
     results = {}
     pairs   = ["PEPEUSDT", "BONKUSDT"]
@@ -70,38 +70,29 @@ def get_prices():
     for pair in pairs:
         coin = pair.replace("USDT", "").lower()
         try:
-            # Try Coins.ph first
-            data = coins_get(f"/api/v2/market/ticker?symbol={pair}")
-            ticker = data.get("data", {})
-            price_usdt = float(ticker.get("close", 0))
+            resp = requests.get(
+                f"https://api.binance.com/api/v3/ticker/24hr?symbol={pair}",
+                timeout=10
+            )
+            resp.raise_for_status()
+            b = resp.json()
+
+            # Validate required fields exist
+            if "lastPrice" not in b:
+                raise ValueError(f"Unexpected Binance response: {b}")
+
+            price_usdt = float(b["lastPrice"])
             results[coin] = {
                 "price_usdt": price_usdt,
                 "price_php":  round(price_usdt * PHP_RATE, 10),
-                "change_pct": float(ticker.get("priceChangePercent", 0)),
-                "high_usdt":  float(ticker.get("high", 0)),
-                "low_usdt":   float(ticker.get("low", 0)),
-                "volume":     float(ticker.get("volume", 0)),
-                "source":     "coins.ph"
+                "change_pct": float(b["priceChangePercent"]),
+                "high_usdt":  float(b["highPrice"]),
+                "low_usdt":   float(b["lowPrice"]),
+                "volume":     float(b["volume"]),
+                "source":     "binance"
             }
-        except Exception:
-            # Fallback: Binance public API (no key needed)
-            try:
-                b = requests.get(
-                    f"https://api.binance.com/api/v3/ticker/24hr?symbol={pair}",
-                    timeout=8
-                ).json()
-                price_usdt = float(b["lastPrice"])
-                results[coin] = {
-                    "price_usdt": price_usdt,
-                    "price_php":  round(price_usdt * PHP_RATE, 10),
-                    "change_pct": float(b["priceChangePercent"]),
-                    "high_usdt":  float(b["highPrice"]),
-                    "low_usdt":   float(b["lowPrice"]),
-                    "volume":     float(b["volume"]),
-                    "source":     "binance_fallback"
-                }
-            except Exception as e:
-                results[coin] = {"error": str(e)}
+        except Exception as e:
+            results[coin] = {"error": str(e)}
 
     return jsonify(results)
 
@@ -145,23 +136,19 @@ def get_signal(coin: str):
 
     try:
         pair = f"{coin}USDT"
-        # Fetch ticker (try Coins.ph, fallback Binance)
-        try:
-            data   = coins_get(f"/api/v2/market/ticker?symbol={pair}")
-            ticker = data.get("data", {})
-            price  = float(ticker.get("close", 0))
-            high   = float(ticker.get("high", 0))
-            low    = float(ticker.get("low", 0))
-            chg    = float(ticker.get("priceChangePercent", 0))
-        except Exception:
-            b      = requests.get(
-                f"https://api.binance.com/api/v3/ticker/24hr?symbol={pair}",
-                timeout=8
-            ).json()
-            price  = float(b["lastPrice"])
-            high   = float(b["highPrice"])
-            low    = float(b["lowPrice"])
-            chg    = float(b["priceChangePercent"])
+        # Fetch ticker directly from Binance (PEPE/BONK not on Coins.ph)
+        resp  = requests.get(
+            f"https://api.binance.com/api/v3/ticker/24hr?symbol={pair}",
+            timeout=10
+        )
+        resp.raise_for_status()
+        b     = resp.json()
+        if "lastPrice" not in b:
+            raise ValueError(f"Unexpected Binance response: {b}")
+        price = float(b["lastPrice"])
+        high  = float(b["highPrice"])
+        low   = float(b["lowPrice"])
+        chg   = float(b["priceChangePercent"])
 
         # Position in 24h range (0 = at low, 1 = at high)
         rng      = high - low
