@@ -20,7 +20,7 @@
 ### 1. Push to GitHub
 ```bash
 git init
-git add .
+git add 
 git commit -m "CoinsBot backend"
 git remote add origin https://github.com/YOUR_USERNAME/coinsbot-backend.git
 git push -u origin main
@@ -52,3 +52,7 @@ Use UptimeRobot (free) to ping /ping every 5 minutes:
 2. Add Monitor → HTTP(s)
 3. URL: https://coinsbot-backend.onrender.com/ping
 4. Interval: every 5 minutes
+flask==3.0.3
+flask-cors==4.0.1
+requests==2.32.3
+gunicorn==22.0.0
